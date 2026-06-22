@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>와보라데이 웃음 측정기1</title>
+<title>와보라데이 웃음 측정기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap" rel="stylesheet">
 <style>
@@ -383,10 +383,23 @@
   // ---------- face-api 모델 로드 (jsdelivr CDN에서 표준 방식으로) ----------
   async function loadModels(){
     if (modelsReady) return;
-    const MODEL_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights';
-    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
-    modelsReady = true;
+    const MODEL_URLS = [
+      'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js/weights',
+      'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights',
+      'https://justadudewhohacks.github.io/face-api.js/weights'
+    ];
+    let lastError = null;
+    for (const MODEL_URL of MODEL_URLS){
+      try{
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
+        modelsReady = true;
+        return;
+      } catch(e){
+        lastError = e;
+      }
+    }
+    throw lastError;
   }
 
   // ---------- 표정 측정 ----------
