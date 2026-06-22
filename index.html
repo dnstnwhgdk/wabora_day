@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>와보라데이 웃음 측정기3</title>
+<title>와보라데이 웃음 측정기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap" rel="stylesheet">
 <style>
@@ -517,12 +517,15 @@
   const originalFetch = window.fetch.bind(window);
   window.fetch = function(input, init){
     const url = (typeof input === 'string') ? input : (input && input.url) || '';
+    showDebugBanner('[fetch] ' + url);
     if (url.indexOf(MODEL_BASE) === 0){
       const filename = url.substring(MODEL_BASE.length + 1); // '/' 제거
       const entry = EMBEDDED_MODEL_FILES[filename];
       if (!entry){
+        showDebugBanner('[fetch intercept] 파일 못찾음: ' + filename);
         return Promise.reject(new Error('내장된 모델 파일을 찾을 수 없어요: ' + filename));
       }
+      showDebugBanner('[fetch intercept] 응답 중: ' + filename + ' (' + entry.type + ')');
       if (entry.type === 'json'){
         const jsonText = atob(entry.data);
         return Promise.resolve(new Response(jsonText, {
