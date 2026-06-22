@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>와보라데이 웃음 측정기</title>
+<title>와보라데이 웃음측정기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap" rel="stylesheet">
 <style>
@@ -201,12 +201,50 @@
     min-height: 18px;
   }
 
+  /* ===================== 떠다니는 이모지/멘트 ===================== */
+  .floaty-layer{
+    position: absolute; inset: 0;
+    overflow: hidden;
+    z-index: 4;
+    pointer-events: none;
+  }
+  .floaty-item{
+    position: absolute;
+    bottom: -10%;
+    font-family: "Black Han Sans", sans-serif;
+    color: #fff;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    white-space: nowrap;
+    opacity: 0;
+    animation: floatUp 3.2s ease-in forwards;
+  }
+  .floaty-item.emoji{ font-size: 34px; text-shadow: none; }
+  .floaty-item.phrase{ font-size: 15px; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 999px; }
+  @keyframes floatUp{
+    0%{ opacity: 0; transform: translateY(0) translateX(0) rotate(0deg); }
+    12%{ opacity: 1; }
+    85%{ opacity: 1; }
+    100%{ opacity: 0; transform: translateY(-115vh) translateX(var(--drift, 0px)) rotate(var(--rot, 0deg)); }
+  }
+
   /* ===================== RESULT ===================== */
   #screen-result{
     width: 100%; height: 100%;
     background: linear-gradient(180deg, var(--green) 0%, var(--green-deep) 100%);
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     padding: 24px;
+  }
+  .result-photo-wrap{
+    position: relative;
+    margin-bottom: 14px;
+  }
+  .result-photo{
+    width: 168px; height: 168px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: rgba(255,255,255,0.2);
+    box-shadow: 0 14px 30px -8px rgba(0,0,0,0.35), 0 0 0 6px rgba(255,255,255,0.5);
+    display: block;
   }
   .medal{
     width: 140px; height:140px;
@@ -216,6 +254,15 @@
     box-shadow: 0 14px 30px -8px rgba(0,0,0,0.3);
     margin-bottom: 20px;
   }
+  .medal.medal-overlap{
+    position: absolute;
+    width: 76px; height: 76px;
+    bottom: -10px; right: -10px;
+    margin-bottom: 0;
+    border: 4px solid var(--green);
+  }
+  .medal.medal-overlap .medal-score{ font-size: 22px; }
+  .medal.medal-overlap .medal-max{ font-size: 9px; margin-top: -2px; }
   .medal-score{ font-family:"Black Han Sans", sans-serif; font-size: 40px; color: var(--ink); }
   .medal-max{ font-size: 12px; color: var(--ink-soft); margin-top:-4px; text-align:center;}
   .result-line{
@@ -269,6 +316,7 @@
   <!-- ============ SCREEN: MEASURING (풀스크린 카메라) ============ -->
   <div class="screen hidden" id="screen-measure">
     <div id="measure-stage"></div>
+    <div class="floaty-layer" id="floaty-layer"></div>
     <div class="measure-hud-top">
       <div class="timer-pill">남은 시간 <span class="timer-num" id="time-left">10</span>초</div>
     </div>
@@ -280,15 +328,18 @@
 
   <!-- ============ SCREEN: RESULT ============ -->
   <div class="screen hidden" id="screen-result">
-    <div class="medal">
-      <div>
-        <div class="medal-score" id="result-score">0</div>
-        <div class="medal-max">/ 100점</div>
+    <div class="result-photo-wrap">
+      <img class="result-photo hidden" id="result-photo" alt="">
+      <div class="medal medal-overlap">
+        <div>
+          <div class="medal-score" id="result-score">0</div>
+          <div class="medal-max">/ 100점</div>
+        </div>
       </div>
     </div>
     <div class="result-line" id="result-line">측정 중...</div>
     <div class="result-sub" id="result-sub"></div>
-    <button class="cta on-green" id="btn-retry">다시 도전하기</button>
+    <button class="cta on-green" id="btn-back">돌아가기</button>
   </div>
 
 </div>
@@ -335,9 +386,10 @@
     result: document.getElementById('screen-result'),
   };
   const btnStart = document.getElementById('btn-start');
-  const btnRetry = document.getElementById('btn-retry');
+  const btnBack = document.getElementById('btn-back');
   const introError = document.getElementById('intro-error');
   const measureStage = document.getElementById('measure-stage');
+  const floatyLayer = document.getElementById('floaty-layer');
   const countNumEl = document.getElementById('count-num');
   const timeLeftEl = document.getElementById('time-left');
   const liveScoreEl = document.getElementById('live-score');
@@ -345,6 +397,7 @@
   const resultScoreEl = document.getElementById('result-score');
   const resultLineEl = document.getElementById('result-line');
   const resultSubEl = document.getElementById('result-sub');
+  const resultPhotoEl = document.getElementById('result-photo');
 
   let videoEl = null;
   let stream = null;
@@ -405,8 +458,15 @@
   // ---------- 표정 측정 ----------
   let bestSmoothed = 0;
   let noFaceTicks = 0;
+  let lastFloatyHint = 0;
   const smoothWindow = [];
   const SMOOTH_SIZE = 5;
+
+  // 웃음 강도를 더 엄격하게 채점: happy 확률에 1.6승을 적용해서
+  // 살짝 웃는 정도(0.5~0.7)는 점수가 크게 깎이고, 확실히 활짝 웃어야 고득점이 나오게 함
+  function scoreFromHappy(happy){
+    return Math.pow(Math.max(0, happy), 1.6);
+  }
 
   async function detectTick(){
     if (!videoEl || videoEl.readyState < 2) return;
@@ -421,23 +481,64 @@
         return;
       }
       noFaceTicks = 0;
-      faceHintEl.textContent = measuring ? '좋아요! 계속 웃어보세요 😄' : '얼굴 인식 완료!';
 
       const happy = detection.expressions.happy || 0;
-      const surprised = detection.expressions.surprised || 0;
-      const raw = Math.min(1, happy + surprised * 0.25);
+      const raw = scoreFromHappy(happy);
 
       smoothWindow.push(raw);
       if (smoothWindow.length > SMOOTH_SIZE) smoothWindow.shift();
       const avg = smoothWindow.reduce((a,b)=>a+b,0) / smoothWindow.length;
 
       if (measuring){
-        if (avg > bestSmoothed) bestSmoothed = avg;
+        updateFaceHint(avg);
+        if (avg > bestSmoothed){
+          bestSmoothed = avg;
+          captureBestFrame();
+        }
         liveScoreEl.innerHTML = Math.round(avg * 100) + '<sup>점</sup>';
+      } else {
+        faceHintEl.textContent = '얼굴 인식 완료!';
       }
     } catch(e){
       // 인식 실패는 조용히 무시하고 다음 tick에서 재시도
     }
+  }
+
+  function updateFaceHint(avg){
+    lastFloatyHint = avg;
+    faceHintEl.textContent = pickPhrase(avg);
+  }
+
+  // ---------- 측정 중 떠다니는 멘트 ----------
+  const HYPE_PHRASES_LOW = ['웃어보세요!', '입꼬리 올리고~', '치즈~ 해볼까요?', '카메라가 기다려요!'];
+  const HYPE_PHRASES_MID = ['좋아요, 계속 웃어봐요!', '오 괜찮은데요?', '조금만 더!', '거의 다 왔어요!'];
+  const HYPE_PHRASES_HIGH = ['바로 그거예요! 😆', '완벽한 미소!', '대박, 최고점 갱신!', '이 표정 그대로!'];
+
+  function pickPhrase(avg){
+    const list = avg > 0.55 ? HYPE_PHRASES_HIGH : avg > 0.22 ? HYPE_PHRASES_MID : HYPE_PHRASES_LOW;
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  // ---------- 최고점 순간 캡처 ----------
+  let bestFrameDataUrl = null;
+  const captureCanvas = document.createElement('canvas');
+
+  function captureBestFrame(){
+    if (!videoEl || videoEl.readyState < 2) return;
+    captureCanvas.width = 320;
+    captureCanvas.height = 320;
+    const ctx = captureCanvas.getContext('2d');
+    const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+    if (!vw || !vh) return;
+    const side = Math.min(vw, vh);
+    const sx = (vw - side) / 2, sy = (vh - side) / 2;
+    // 좌우 반전 (셀카처럼 보이게)
+    ctx.save();
+    ctx.translate(captureCanvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(videoEl, sx, sy, side, side, 0, 0, captureCanvas.width, captureCanvas.height);
+    ctx.restore();
+    bestFrameDataUrl = captureCanvas.toDataURL('image/jpeg', 0.85);
   }
 
   function startDetectLoop(){
@@ -507,9 +608,11 @@
     showScreen('measure');
     measuring = true;
     bestSmoothed = 0;
+    bestFrameDataUrl = null;
     smoothWindow.length = 0;
     liveScoreEl.innerHTML = '0<sup>점</sup>';
     faceHintEl.textContent = '얼굴을 화면 안에 맞춰주세요';
+    startFloatyLoop();
 
     const DURATION = 10;
     let elapsed = 0;
@@ -524,9 +627,40 @@
       if (elapsed >= DURATION){
         clearInterval(iv);
         measuring = false;
+        stopFloatyLoop();
         finishMeasuring();
       }
     }, tickMs);
+  }
+
+  // ---------- 떠다니는 이모지/멘트 생성 루프 ----------
+  const FLOAT_EMOJIS = ['😄','😆','😂','🙂','😁','✨','😺'];
+  let floatyHandle = null;
+
+  function startFloatyLoop(){
+    if (floatyHandle) return;
+    floatyHandle = setInterval(spawnFloatyItem, 650);
+  }
+  function stopFloatyLoop(){
+    if (floatyHandle){ clearInterval(floatyHandle); floatyHandle = null; }
+    floatyLayer.innerHTML = '';
+  }
+  function spawnFloatyItem(){
+    if (!measuring) return;
+    const el = document.createElement('div');
+    const useEmoji = Math.random() < 0.6;
+    el.className = 'floaty-item ' + (useEmoji ? 'emoji' : 'phrase');
+    el.textContent = useEmoji
+      ? FLOAT_EMOJIS[Math.floor(Math.random() * FLOAT_EMOJIS.length)]
+      : pickPhrase(lastFloatyHint);
+    const leftPct = 8 + Math.random() * 84;
+    const drift = (Math.random() * 60 - 30) + 'px';
+    const rot = (Math.random() * 30 - 15) + 'deg';
+    el.style.left = leftPct + '%';
+    el.style.setProperty('--drift', drift);
+    el.style.setProperty('--rot', rot);
+    floatyLayer.appendChild(el);
+    setTimeout(() => el.remove(), 3300);
   }
 
   function finishMeasuring(){
@@ -538,19 +672,43 @@
     const tier = getTier(score);
     resultLineEl.textContent = tier.line;
     resultSubEl.textContent = tier.sub;
+    if (bestFrameDataUrl){
+      resultPhotoEl.src = bestFrameDataUrl;
+      resultPhotoEl.classList.remove('hidden');
+    } else {
+      resultPhotoEl.classList.add('hidden');
+    }
+    stopCamera();
     showScreen('result');
   }
 
   function getTier(score){
-    if (score >= 85) return { line: '😆 웃음 폭발 위험!', sub: '오늘의 분위기 메이커는 바로 당신!' };
-    if (score >= 65) return { line: '😄 함박웃음 인증', sub: '보는 사람도 같이 웃게 만드는 미소예요.' };
-    if (score >= 40) return { line: '🙂 살짝 미소 감지', sub: '조금만 더 활짝 웃어볼까요?' };
-    if (score >= 15) return { line: '😐 무표정 경보', sub: '카메라가 부끄러웠나봐요. 한 번 더!' };
+    if (score >= 80) return { line: '😆 웃음 폭발 위험!', sub: '오늘의 분위기 메이커는 바로 당신!' };
+    if (score >= 55) return { line: '😄 함박웃음 인증', sub: '보는 사람도 같이 웃게 만드는 미소예요.' };
+    if (score >= 30) return { line: '🙂 살짝 미소 감지', sub: '조금만 더 활짝 웃어볼까요?' };
+    if (score >= 10) return { line: '😐 무표정 경보', sub: '카메라가 부끄러웠나봐요. 한 번 더!' };
     return { line: '🥶 썩은 표정 감지', sub: '괜찮아요, 다시 도전하면 분명 웃길 거예요.' };
   }
 
-  btnRetry.addEventListener('click', () => {
-    runCountdown();
+  // ---------- 카메라 정리 ----------
+  function stopCamera(){
+    if (stream){
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+    if (videoEl && videoEl.parentElement){
+      videoEl.parentElement.removeChild(videoEl);
+    }
+    videoEl = null;
+    if (detectLoopHandle){
+      clearInterval(detectLoopHandle);
+      detectLoopHandle = null;
+    }
+  }
+
+  // ---------- 돌아가기: 인트로 화면으로 복귀 ----------
+  btnBack.addEventListener('click', () => {
+    showScreen('intro');
   });
 
 })();
