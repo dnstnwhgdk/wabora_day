@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>와보라데이 웃음측정기</title>
+<title>와보라데이 웃음 측정기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap" rel="stylesheet">
 <style>
@@ -460,12 +460,15 @@
   let noFaceTicks = 0;
   let lastFloatyHint = 0;
   const smoothWindow = [];
-  const SMOOTH_SIZE = 5;
+  const SMOOTH_SIZE = 9; // 약 1.6초 — 짧게 반짝 웃은 걸로는 최고점이 잘 안 잡히게
 
-  // 웃음 강도를 더 엄격하게 채점: happy 확률에 1.6승을 적용해서
-  // 살짝 웃는 정도(0.5~0.7)는 점수가 크게 깎이고, 확실히 활짝 웃어야 고득점이 나오게 함
+  // 웃음 강도를 훨씬 엄격하게 채점.
+  // face-api.js의 happy 확률은 평범하게 웃기만 해도 0.9~0.99까지 쉽게 올라가므로,
+  // 4.2승의 강한 지수 페널티를 줘서 "거의 완전히 활짝" 웃어야만 80~90점대가 나오게 한다.
+  // (참고: happy=0.7→약22점, 0.85→약51점, 0.95→약81점, 0.99→약96점)
   function scoreFromHappy(happy){
-    return Math.pow(Math.max(0, happy), 1.6);
+    const h = Math.max(0, Math.min(1, happy));
+    return Math.pow(h, 4.2);
   }
 
   async function detectTick(){
@@ -487,7 +490,10 @@
 
       smoothWindow.push(raw);
       if (smoothWindow.length > SMOOTH_SIZE) smoothWindow.shift();
-      const avg = smoothWindow.reduce((a,b)=>a+b,0) / smoothWindow.length;
+      // 평균이 아니라 "최근 윈도우의 평균"을 쓰되, 윈도우가 다 채워지기 전엔
+      // 부족한 칸을 0으로 간주해 초반에 잠깐 튀는 것만으로 고점이 박히지 않게 한다.
+      const sum = smoothWindow.reduce((a,b)=>a+b,0);
+      const avg = sum / SMOOTH_SIZE;
 
       if (measuring){
         updateFaceHint(avg);
@@ -515,7 +521,7 @@
   const HYPE_PHRASES_HIGH = ['바로 그거예요! 😆', '완벽한 미소!', '대박, 최고점 갱신!', '이 표정 그대로!'];
 
   function pickPhrase(avg){
-    const list = avg > 0.55 ? HYPE_PHRASES_HIGH : avg > 0.22 ? HYPE_PHRASES_MID : HYPE_PHRASES_LOW;
+    const list = avg > 0.45 ? HYPE_PHRASES_HIGH : avg > 0.15 ? HYPE_PHRASES_MID : HYPE_PHRASES_LOW;
     return list[Math.floor(Math.random() * list.length)];
   }
 
@@ -683,8 +689,8 @@
   }
 
   function getTier(score){
-    if (score >= 80) return { line: '😆 웃음 폭발 위험!', sub: '오늘의 분위기 메이커는 바로 당신!' };
-    if (score >= 55) return { line: '😄 함박웃음 인증', sub: '보는 사람도 같이 웃게 만드는 미소예요.' };
+    if (score >= 85) return { line: '😆 웃음 폭발 위험!', sub: '오늘의 분위기 메이커는 바로 당신!' };
+    if (score >= 60) return { line: '😄 함박웃음 인증', sub: '보는 사람도 같이 웃게 만드는 미소예요.' };
     if (score >= 30) return { line: '🙂 살짝 미소 감지', sub: '조금만 더 활짝 웃어볼까요?' };
     if (score >= 10) return { line: '😐 무표정 경보', sub: '카메라가 부끄러웠나봐요. 한 번 더!' };
     return { line: '🥶 썩은 표정 감지', sub: '괜찮아요, 다시 도전하면 분명 웃길 거예요.' };
