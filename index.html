@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>와보라데이 웃음측정기</title>
+<title>와보라데이 웃음 측정기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap" rel="stylesheet">
 <style>
@@ -670,7 +670,19 @@
   }
 
   function finishMeasuring(){
-    showResult(Math.round(bestSmoothed * 100));
+    const baseScore = bestSmoothed * 100;
+    showResult(applyLuckFactor(baseScore));
+  }
+
+  // ---------- 점수에 약간의 "운" 요소 추가 ----------
+  // 표정 점수가 여전히 핵심이지만, 매번 똑같이 웃어도 결과가 조금씩 달라지도록
+  // ±8점 정도의 무작위 변동을 더한다. 다만 표정 점수가 낮을 땐 운으로 크게
+  // 못 오르도록 보정폭 자체도 표정 점수에 비례해서 줄어들게 한다.
+  function applyLuckFactor(baseScore){
+    const luckRange = 8 * (0.3 + 0.7 * (baseScore / 100)); // 점수가 낮으면 운 보정폭도 작아짐
+    const luck = (Math.random() * 2 - 1) * luckRange;      // -luckRange ~ +luckRange
+    const finalScore = Math.round(Math.max(0, Math.min(100, baseScore + luck)));
+    return finalScore;
   }
 
   function showResult(score){
