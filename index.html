@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>와보라데이 웃음 측정기</title>
+<title>와보라데이 웃음측정기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap" rel="stylesheet">
 <style>
@@ -456,19 +456,20 @@
   }
 
   // ---------- 표정 측정 ----------
-  let bestSmoothed = 0;
+  let bestSmoothed = 0;   // 사진 캡처용 (가장 잘 웃은 순간을 보여주기 위함, 점수와는 무관)
+  let allScores = [];     // 측정 구간 전체의 점수를 기록 -> 평균으로 최종 점수 산출
   let noFaceTicks = 0;
   let lastFloatyHint = 0;
   const smoothWindow = [];
-  const SMOOTH_SIZE = 9; // 약 1.6초 — 짧게 반짝 웃은 걸로는 최고점이 잘 안 잡히게
+  const SMOOTH_SIZE = 9; // 약 1.6초 — 순간적인 표정 변화를 부드럽게 처리
 
   // 웃음 강도를 매우 엄격하게 채점.
   // face-api.js의 happy 확률은 평범하게 웃기만 해도 0.9~0.99까지 쉽게 올라가므로,
-  // 7.0승의 강한 지수 페널티를 줘서 "거의 완벽하게 확신할 만큼" 활짝 웃어야만 고득점이 나오게 한다.
-  // (참고: happy=0.85→약32점, 0.9→약48점, 0.95→약70점, 0.98→약87점, 0.99→약93점)
+  // 9.0승의 강한 지수 페널티를 줘서 "거의 완벽하게 확신할 만큼" 활짝 웃어야만 고득점이 나오게 한다.
+  // (참고: happy=0.85→약23점, 0.9→약39점, 0.95→약63점, 0.98→약83점, 0.99→약91점)
   function scoreFromHappy(happy){
     const h = Math.max(0, Math.min(1, happy));
-    return Math.pow(h, 7.0);
+    return Math.pow(h, 9.0);
   }
 
   async function detectTick(){
@@ -481,6 +482,7 @@
       if (!detection){
         noFaceTicks++;
         if (noFaceTicks > 3) faceHintEl.textContent = '얼굴이 잘 안 보여요. 더 가까이 와주세요!';
+        if (measuring) allScores.push(0); // 얼굴이 안 보이는 동안은 0점으로 집계 (꾸준히 웃어야 유리하게)
         return;
       }
       noFaceTicks = 0;
@@ -490,12 +492,11 @@
 
       smoothWindow.push(raw);
       if (smoothWindow.length > SMOOTH_SIZE) smoothWindow.shift();
-      // 평균이 아니라 "최근 윈도우의 평균"을 쓰되, 윈도우가 다 채워지기 전엔
-      // 부족한 칸을 0으로 간주해 초반에 잠깐 튀는 것만으로 고점이 박히지 않게 한다.
       const sum = smoothWindow.reduce((a,b)=>a+b,0);
       const avg = sum / SMOOTH_SIZE;
 
       if (measuring){
+        allScores.push(avg);
         updateFaceHint(avg);
         if (avg > bestSmoothed){
           bestSmoothed = avg;
@@ -614,6 +615,7 @@
     showScreen('measure');
     measuring = true;
     bestSmoothed = 0;
+    allScores = [];
     bestFrameDataUrl = null;
     smoothWindow.length = 0;
     liveScoreEl.innerHTML = '0<sup>점</sup>';
@@ -670,7 +672,11 @@
   }
 
   function finishMeasuring(){
-    const baseScore = bestSmoothed * 100;
+    // 측정 구간 전체의 평균으로 점수를 산출 (한순간 반짝 웃는 것만으로는 고점이 안 나오게)
+    const meanScore = allScores.length
+      ? allScores.reduce((a,b)=>a+b,0) / allScores.length
+      : 0;
+    const baseScore = meanScore * 100;
     showResult(applyLuckFactor(baseScore));
   }
 
@@ -701,9 +707,9 @@
   }
 
   function getTier(score){
-    if (score >= 75) return { line: '😆 웃음 폭발 위험!', sub: '오늘의 분위기 메이커는 바로 당신!' };
-    if (score >= 45) return { line: '😄 함박웃음 인증', sub: '보는 사람도 같이 웃게 만드는 미소예요.' };
-    if (score >= 18) return { line: '🙂 살짝 미소 감지', sub: '조금만 더 활짝 웃어볼까요?' };
+    if (score >= 65) return { line: '😆 웃음 폭발 위험!', sub: '오늘의 분위기 메이커는 바로 당신!' };
+    if (score >= 35) return { line: '😄 함박웃음 인증', sub: '보는 사람도 같이 웃게 만드는 미소예요.' };
+    if (score >= 15) return { line: '🙂 살짝 미소 감지', sub: '조금만 더 활짝 웃어볼까요?' };
     if (score >= 5) return { line: '😐 무표정 경보', sub: '카메라가 부끄러웠나봐요. 한 번 더!' };
     return { line: '🥶 썩은 표정 감지', sub: '괜찮아요, 다시 도전하면 분명 웃길 거예요.' };
   }
